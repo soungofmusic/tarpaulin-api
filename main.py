@@ -162,21 +162,37 @@ class UserModel:
 
     def add_course_to_user(self, user_id, course_id):
         """Add course to user's course list"""
-        user = self.get_user_by_id(user_id)
-        if user:
-            courses = user.get('courses', [])
-            if str(course_id) not in courses:
-                courses.append(str(course_id))
-                user['courses'] = courses
-                self.client.put(user)
+        try:
+            user = self.get_user_by_id(user_id)
+            if user:
+                courses = user.get('courses', [])
+                # Convert course_id to string for consistent storage
+                str_course_id = str(course_id)
+                if str_course_id not in courses:
+                    courses.append(str_course_id)
+                    user['courses'] = courses
+                    self.client.put(user)
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error adding course to user: {e}")
+            return False
 
     def remove_course_from_user(self, user_id, course_id):
         """Remove course from user's course list"""
-        user = self.get_user_by_id(user_id)
-        if user and 'courses' in user:
-            if course_id in user['courses']:
-                user['courses'].remove(course_id)
-                self.client.put(user)
+        try:
+            user = self.get_user_by_id(user_id)
+            if user and 'courses' in user:
+                # Convert course_id to string for consistent comparison
+                str_course_id = str(course_id)
+                if str_course_id in user['courses']:
+                    user['courses'].remove(str_course_id)
+                    self.client.put(user)
+                    return True
+            return False
+        except Exception as e:
+            print(f"Error removing course from user: {e}")
+            return False
 
 class CourseModel:
     """Handles course-related database operations"""
@@ -250,51 +266,91 @@ class CourseModel:
 
     def update_course(self, course_id, data):
         """Update course details"""
-        course = self.get_course_by_id(course_id)
-        if course:
-            for key, value in data.items():
-                if key != 'students':
-                    course[key] = value
-            self.client.put(course)
-            return course
-        return None
+        try:
+            course = self.get_course_by_id(course_id)
+            if course:
+                # If instructor is changing, update the course lists
+                if 'instructor_id' in data and str(data['instructor_id']) != str(course['instructor_id']):
+                    old_instructor_id = course['instructor_id']
+                    new_instructor_id = data['instructor_id']
+                    
+                    # Remove course from old instructor
+                    user_model.remove_course_from_user(old_instructor_id, course_id)
+                    
+                    # Add course to new instructor
+                    user_model.add_course_to_user(new_instructor_id, course_id)
+                
+                # Update course fields
+                for key, value in data.items():
+                    if key != 'students':  # Don't update students directly through this method
+                        course[key] = value
+                        
+                self.client.put(course)
+                return course
+            return None
+        except Exception as e:
+            print(f"Error updating course: {e}")
+            return None
 
     def delete_course(self, course_id):
         """Delete course and update related records"""
-        key = self.client.key(self.kind, int(course_id))
-        course = self.client.get(key)
-        if course:
-            instructor_id = course['instructor_id']
-            user_model.remove_course_from_user(instructor_id, course_id)
+        try:
+            int_course_id = int(course_id)
+            key = self.client.key(self.kind, int_course_id)
+            course = self.client.get(key)
             
-            for student_id in course.get('students', []):
-                user_model.remove_course_from_user(student_id, course_id)
+            if not course:
+                return False
                 
+            # Remove course from instructor's courses list
+            instructor_id = course.get('instructor_id')
+            if instructor_id:
+                user_model.remove_course_from_user(instructor_id, int_course_id)
+            
+            # Remove course from all enrolled students' courses lists
+            for student_id in course.get('students', []):
+                user_model.remove_course_from_user(student_id, int_course_id)
+            
+            # Delete the course entity
             self.client.delete(key)
             return True
-        return False
+        except Exception as e:
+            print(f"Error deleting course: {e}")
+            return False
 
     def update_enrollment(self, course_id, add_students, remove_students):
         """Update student enrollment"""
-        course = self.get_course_by_id(course_id)
-        if not course:
-            return False
+        try:
+            course = self.get_course_by_id(course_id)
+            if not course:
+                return False
+                
+            # Convert current students to set of strings for efficient operations
+            students = set(str(sid) for sid in course.get('students', []))
             
-        students = set(course.get('students', []))
-        
-        for student_id in remove_students:
-            if student_id in students:
-                students.remove(student_id)
-                user_model.remove_course_from_user(student_id, course_id)
-                
-        for student_id in add_students:
-            if student_id not in students:
-                students.add(student_id)
-                user_model.add_course_to_user(student_id, course_id)
-                
-        course['students'] = list(students)
-        self.client.put(course)
-        return True
+            # Process removals
+            for student_id in remove_students:
+                str_student_id = str(student_id)
+                if str_student_id in students:
+                    students.remove(str_student_id)
+                    # Update student's courses list
+                    user_model.remove_course_from_user(student_id, course_id)
+            
+            # Process additions
+            for student_id in add_students:
+                str_student_id = str(student_id)
+                if str_student_id not in students:
+                    students.add(str_student_id)
+                    # Update student's courses list
+                    user_model.add_course_to_user(student_id, course_id)
+            
+            # Update course with new student list
+            course['students'] = list(students)
+            self.client.put(course)
+            return True
+        except Exception as e:
+            print(f"Error updating enrollment: {e}")
+            return False
 
 # Initialize models
 user_model = UserModel()
@@ -495,7 +551,7 @@ def create_course():
         return {"Error": "The request body is invalid"}, 400
 
     course = course_model.create_course(data)
-    user_model.add_course_to_user(data['instructor_id'], course.id)
+    user_model.add_course_to_user(data['instructor_id'], course.key.id)
     
     response = course_model.format_course_response(course, request.url_root.rstrip('/'))
     return response, 201
