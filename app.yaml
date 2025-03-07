@@ -1,0 +1,13 @@
+runtime: python312
+
+handlers:
+  - url: /.*
+    script: auto
+
+env_variables:
+  AUTH0_DOMAIN: 'dev-gkhpabh0xvci83ij.us.auth0.com'
+  API_AUDIENCE: 'https://tarpaulin.api'
+  CLIENT_ID: '1nVRjxT7zhX7tYAximu6cVJdzJYVRuGA'
+  CLIENT_SECRET: 'G-yYK1JFuYwRPBIBBVeVpQQqYnYW4VVKNWGn5E9EIepGfFM-_rYRhmlM12vSnOLv'
+  PROJECT_ID: 'hw6-oungs-443204'
+  BUCKET_NAME: 'hw6-oungs-id-avatars'
