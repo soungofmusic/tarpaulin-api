@@ -1,4 +1,3 @@
-```markdown
 # Tarpaulin API
 
 A RESTful API for a lightweight course management tool called "Tarpaulin", an alternative to Canvas. This project serves as a portfolio piece demonstrating skills in building cloud-based APIs with proper authentication, authorization, and data management.
@@ -113,4 +112,3 @@ The API can be tested using the Postman collection provided in the original assi
 ## License
 
 This project is part of a portfolio assignment for CS 493 at Oregon State University and is available for educational and demonstration purposes.
-```
